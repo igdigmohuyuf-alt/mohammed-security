@@ -1,1 +1,188 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MOHAMMED SECURITY</title>
+<style>
+*{box-sizing:border-box}
+body{
+ margin:0;background:#090b10;color:white;
+ font-family:Arial,sans-serif;
+}
+header{
+ background:#11151d;padding:22px 35px;
+ border-bottom:1px solid #292e38;
+ display:flex;justify-content:space-between;
+ align-items:center;
+}
+.logo{font-size:22px;font-weight:bold;color:#ff3030}
+.logo span{color:white}
+.container{max-width:1100px;margin:40px auto;padding:20px}
+h1{font-size:30px}
+.subtitle{color:#9299a8}
+.card{
+ background:#121720;border:1px solid #292f3b;
+ border-radius:12px;padding:25px;margin-top:25px;
+}
+input,select{
+ width:100%;padding:14px;margin:10px 0;
+ background:#090d14;border:1px solid #343b48;
+ border-radius:7px;color:white;font-size:15px;
+}
+button{
+ background:#e32935;color:white;border:0;
+ padding:13px 22px;border-radius:7px;
+ cursor:pointer;font-weight:bold;
+}
+button:hover{background:#ff414b}
+.secondary{background:#303846}
+#dashboard{display:none}
+#message{margin-top:15px;color:#ff6060}
+table{width:100%;border-collapse:collapse;margin-top:20px}
+td,th{padding:13px;border-bottom:1px solid #303744;text-align:center}
+th{color:#ff5555}
+.stat{font-size:26px;color:#ff4545;font-weight:bold}
+</style>
+</head>
+<body>
 
+<header>
+ <div class="logo">MOHAMMED <span>SECURITY</span></div>
+ <div>ADMIN PANEL</div>
+</header>
+
+<div class="container">
+
+<section id="login">
+ <h1>تسجيل دخول المدير</h1>
+ <p class="subtitle">لوحة إدارة تراخيص Mohammed Security</p>
+ <div class="card">
+  <input id="email" type="email" placeholder="البريد الإلكتروني">
+  <input id="password" type="password" placeholder="كلمة المرور">
+  <button onclick="login()">تسجيل الدخول</button>
+  <p id="message"></p>
+ </div>
+</section>
+
+<section id="dashboard">
+ <h1>لوحة التحكم</h1>
+ <p class="subtitle">مرحباً بك في نظام إدارة التراخيص</p>
+
+ <div class="card">
+  <h2>إنشاء كود تفعيل جديد</h2>
+  <label>مدة الاشتراك</label>
+  <select id="duration">
+   <option value="1">يوم واحد</option>
+   <option value="30">شهر واحد</option>
+   <option value="365">سنة واحدة</option>
+  </select>
+  <button onclick="createLicense()">إنشاء كود</button>
+  <p id="newkey"></p>
+ </div>
+
+ <div class="card">
+  <h2>إدارة التراخيص</h2>
+  <button class="secondary" onclick="loadLicenses()">تحديث القائمة</button>
+  <div style="overflow-x:auto">
+   <table>
+    <thead>
+     <tr><th>الكود</th><th>الحالة</th><th>الإجراء</th></tr>
+    </thead>
+    <tbody id="licenses"></tbody>
+   </table>
+  </div>
+ </div>
+
+ <button class="secondary" onclick="logout()">تسجيل الخروج</button>
+</section>
+</div>
+
+<script>
+const SUPABASE_URL = "ضع_رابط_مشروعك_هنا";
+const SUPABASE_KEY = "ضع_مفتاح_anon_هنا";
+const FUNCTION_URL = SUPABASE_URL + "/functions/v1/admin-license-manager";
+
+let token = "";
+
+async function login(){
+ const email=document.getElementById("email").value;
+ const password=document.getElementById("password").value;
+ const msg=document.getElementById("message");
+
+ try{
+  const r=await fetch(SUPABASE_URL+"/auth/v1/token?grant_type=password",{
+   method:"POST",
+   headers:{
+    "Content-Type":"application/json",
+    "apikey":SUPABASE_KEY
+   },
+   body:JSON.stringify({email,password})
+  });
+  const data=await r.json();
+  if(!r.ok) throw new Error(data.msg||data.message||"فشل تسجيل الدخول");
+  token=data.access_token;
+  document.getElementById("login").style.display="none";
+  document.getElementById("dashboard").style.display="block";
+  loadLicenses();
+ }catch(e){msg.textContent=e.message}
+}
+
+async function api(body){
+ const r=await fetch(FUNCTION_URL,{
+  method:"POST",
+  headers:{
+   "Content-Type":"application/json",
+   "apikey":SUPABASE_KEY,
+   "Authorization":"Bearer "+token
+  },
+  body:JSON.stringify(body)
+ });
+ const data=await r.json();
+ if(!r.ok) throw new Error(data.error||data.message||"حدث خطأ");
+ return data;
+}
+
+async function createLicense(){
+ try{
+  const data=await api({
+   action:"create",
+   duration_days:Number(document.getElementById("duration").value)
+  });
+  document.getElementById("newkey").textContent=
+   "كود التفعيل: "+(data.key||data.license_key||JSON.stringify(data));
+  loadLicenses();
+ }catch(e){alert(e.message)}
+}
+
+async function loadLicenses(){
+ try{
+  const data=await api({action:"list"});
+  const rows=data.licenses||data;
+  document.getElementById("licenses").innerHTML=rows.map(x=>
+   `<tr>
+    <td>${x.key||x.license_key||x.id}</td>
+    <td>${x.status||"غير معروف"}</td>
+    <td><button onclick="disableLicense('${x.id}')">تعطيل</button></td>
+   </tr>`
+  ).join("");
+ }catch(e){alert(e.message)}
+}
+
+async function disableLicense(id){
+ if(!confirm("هل تريد تعطيل هذا الترخيص؟"))return;
+ try{
+  await api({action:"disable",id});
+  loadLicenses();
+ }catch(e){alert(e.message)}
+}
+
+function logout(){
+ token="";
+ document.getElementById("dashboard").style.display="none";
+ document.getElementById("login").style.display="block";
+}
+
+</script>
+</body>
+</html>
